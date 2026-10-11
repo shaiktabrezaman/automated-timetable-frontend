@@ -4,25 +4,38 @@ export default function SlotEditModal({
   isOpen,
   onClose,
   slotData, // { day, periodIndex, periodInfo, existingSlot }
-  subjects,
-  faculty,
-  rooms,
+  subjects = [],
+  faculty = [],
+  rooms = [],
   onSaveSlot,
   onClearSlot
 }) {
+  const { day, periodIndex, periodInfo, existingSlot } = slotData || {};
+
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [selectedFacultyId, setSelectedFacultyId] = useState('');
+  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [spanPeriods, setSpanPeriods] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState(null);
+
+  // Sync state whenever slotData changes or modal opens
+  useEffect(() => {
+    if (slotData) {
+      setSelectedSubjectId(existingSlot?.subjectId ? String(existingSlot.subjectId) : '');
+      setSelectedFacultyId(existingSlot?.facultyId ? String(existingSlot.facultyId) : '');
+      setSelectedRoomId(existingSlot?.roomId ? String(existingSlot.roomId) : '');
+      setSpanPeriods(existingSlot?.spanPeriods || 1);
+      setModalError(null);
+    }
+  }, [slotData, existingSlot]);
+
   if (!isOpen || !slotData) return null;
-
-  const { day, periodIndex, periodInfo, existingSlot } = slotData;
-
-  const [selectedSubjectId, setSelectedSubjectId] = useState(existingSlot?.subjectId || '');
-  const [selectedFacultyId, setSelectedFacultyId] = useState(existingSlot?.facultyId || '');
-  const [selectedRoomId, setSelectedRoomId] = useState(existingSlot?.roomId || '');
-  const [spanPeriods, setSpanPeriods] = useState(existingSlot?.spanPeriods || 1);
 
   // Auto-fill duration based on subject type when subject changes
   const handleSubjectChange = (subjectId) => {
     setSelectedSubjectId(subjectId);
-    const sub = subjects.find((s) => s.id === subjectId);
+    const sub = subjects.find((s) => String(s.id) === String(subjectId));
     if (sub) {
       if (sub.type === 'LAB') {
         setSpanPeriods(sub.durationPeriods || 3);
@@ -34,28 +47,60 @@ export default function SlotEditModal({
     }
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
+    setModalError(null);
+
     if (!selectedSubjectId) {
-      onClearSlot(day, periodIndex);
-      onClose();
+      if (existingSlot?.id) {
+        setSaving(true);
+        try {
+          await onClearSlot(existingSlot.id, day, periodIndex);
+          onClose();
+        } catch (err) {
+          setModalError(err.message || 'Failed to clear slot.');
+        } finally {
+          setSaving(false);
+        }
+      } else {
+        onClose();
+      }
       return;
     }
 
-    onSaveSlot({
-      day,
-      periodIndex,
-      subjectId: selectedSubjectId,
-      facultyId: selectedFacultyId,
-      roomId: selectedRoomId,
-      spanPeriods: Number(spanPeriods)
-    });
-    onClose();
+    setSaving(true);
+    try {
+      await onSaveSlot({
+        day,
+        periodIndex,
+        subjectId: Number(selectedSubjectId),
+        facultyId: selectedFacultyId ? Number(selectedFacultyId) : null,
+        roomId: selectedRoomId ? Number(selectedRoomId) : null,
+        spanPeriods: Number(spanPeriods)
+      });
+      onClose();
+    } catch (err) {
+      setModalError(err.message || 'Failed to save slot assignment.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleClear = () => {
-    onClearSlot(day, periodIndex);
-    onClose();
+  const handleClear = async () => {
+    if (!existingSlot?.id) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    setModalError(null);
+    try {
+      await onClearSlot(existingSlot.id, day, periodIndex);
+      onClose();
+    } catch (err) {
+      setModalError(err.message || 'Failed to clear slot.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -68,10 +113,16 @@ export default function SlotEditModal({
               {day} · Period {periodIndex} ({periodInfo?.time})
             </p>
           </div>
-          <button className="modal-close-btn" onClick={onClose}>
+          <button className="modal-close-btn" onClick={onClose} disabled={saving}>
             ✕
           </button>
         </div>
+
+        {modalError && (
+          <div style={{ padding: '0 1.5rem', marginTop: '1rem' }}>
+            <div className="error-banner">⚠ {modalError}</div>
+          </div>
+        )}
 
         <form onSubmit={handleSave}>
           <div className="modal-body">
@@ -81,6 +132,7 @@ export default function SlotEditModal({
                 className="form-control"
                 value={selectedSubjectId}
                 onChange={(e) => handleSubjectChange(e.target.value)}
+                disabled={saving}
               >
                 <option value="">-- No Class / Free Period --</option>
                 {subjects.map((s) => (
@@ -99,6 +151,7 @@ export default function SlotEditModal({
                     className="form-control"
                     value={selectedFacultyId}
                     onChange={(e) => setSelectedFacultyId(e.target.value)}
+                    disabled={saving}
                   >
                     <option value="">-- Unassigned --</option>
                     {faculty.map((f) => (
@@ -115,11 +168,12 @@ export default function SlotEditModal({
                     className="form-control"
                     value={selectedRoomId}
                     onChange={(e) => setSelectedRoomId(e.target.value)}
+                    disabled={saving}
                   >
                     <option value="">-- Unassigned --</option>
                     {rooms.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.name} ({r.type} · {r.capacity} seats)
+                        {r.roomNumber || r.name} ({r.type} · {r.capacity} seats)
                       </option>
                     ))}
                   </select>
@@ -131,6 +185,7 @@ export default function SlotEditModal({
                     className="form-control"
                     value={spanPeriods}
                     onChange={(e) => setSpanPeriods(e.target.value)}
+                    disabled={saving}
                   >
                     <option value="1">1 Period (55 mins - Standard Lecture)</option>
                     <option value="2">2 Consecutive Periods (e.g. Training/Workshop)</option>
@@ -150,22 +205,25 @@ export default function SlotEditModal({
                 type="button"
                 className="btn btn-outline-danger"
                 onClick={handleClear}
+                disabled={saving}
               >
-                Clear Slot
+                {saving ? 'Processing…' : 'Clear Slot'}
               </button>
             )}
             <button
               type="button"
               className="btn btn-secondary"
               onClick={onClose}
+              disabled={saving}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="btn btn-primary"
+              disabled={saving}
             >
-              Save Assignment
+              {saving ? 'Saving…' : 'Save Assignment'}
             </button>
           </div>
         </form>

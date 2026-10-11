@@ -42,13 +42,15 @@ export default function Navbar({ activeTab, setActiveTab, onResetData }) {
         </nav>
 
         <div className="nav-actions">
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={onResetData}
-            title="Reset data to default configuration"
-          >
-            ↺ Reset
-          </button>
+          {onResetData && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={onResetData}
+              title="Refresh data from server"
+            >
+              ↺ Refresh Data
+            </button>
+          )}
         </div>
       </div>
     </header>

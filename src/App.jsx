@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/layout/Navbar';
 import Dashboard from './components/dashboard/Dashboard';
 import ManageData from './components/management/ManageData';
@@ -6,101 +6,121 @@ import GeneratorWorkflow from './components/generator/GeneratorWorkflow';
 import TimetableGrid from './components/timetable/TimetableGrid';
 
 import {
-  INITIAL_SECTIONS,
-  INITIAL_FACULTY,
-  INITIAL_SUBJECTS,
-  INITIAL_ROOMS,
-  INITIAL_ELECTIVE_GROUPS,
-  INITIAL_TIMETABLE_SLOTS,
-  DEFAULT_SEMESTERS,
-  DEFAULT_ACADEMIC_YEARS
-} from './data/defaultState';
+  fetchSections,
+  fetchFaculty,
+  fetchSubjects,
+  fetchRooms,
+  fetchElectiveGroups,
+  fetchDepartments,
+  fetchAcademicYears,
+  fetchSemesters,
+} from './api/api';
 
-const STORAGE_KEY_PREFIX = 'college_tt_';
+import { PERIOD_DEFINITIONS, WORKING_DAYS, LUNCH_BREAK } from './data/defaultState';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // Load from localStorage or fall back to defaultState
-  const [sections, setSections] = useState(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}sections`);
-    return saved ? JSON.parse(saved) : INITIAL_SECTIONS;
-  });
+  // ── Backend-sourced reference data ──────────────────────────────────────────
+  const [sections, setSections] = useState([]);
+  const [faculty, setFaculty] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [electiveGroups, setElectiveGroups] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [academicYears, setAcademicYears] = useState([]);
+  const [semesters, setSemesters] = useState([]);
 
-  const [faculty, setFaculty] = useState(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}faculty`);
-    return saved ? JSON.parse(saved) : INITIAL_FACULTY;
-  });
+  // ── Shared selected section (used across Generator + Timetable tabs) ─────────
+  const [selectedSectionId, setSelectedSectionId] = useState(null);
 
-  const [subjects, setSubjects] = useState(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}subjects`);
-    return saved ? JSON.parse(saved) : INITIAL_SUBJECTS;
-  });
+  // ── Global loading / error state ─────────────────────────────────────────────
+  const [loadingInit, setLoadingInit] = useState(true);
+  const [initError, setInitError] = useState(null);
 
-  const [rooms, setRooms] = useState(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}rooms`);
-    return saved ? JSON.parse(saved) : INITIAL_ROOMS;
-  });
+  // ── Load all reference data from backend ─────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    setLoadingInit(true);
+    setInitError(null);
+    try {
+      const [
+        sectionsData,
+        facultyData,
+        subjectsData,
+        roomsData,
+        electivesData,
+        departmentsData,
+        academicYearsData,
+        semestersData,
+      ] = await Promise.all([
+        fetchSections(),
+        fetchFaculty(),
+        fetchSubjects(),
+        fetchRooms(),
+        fetchElectiveGroups(),
+        fetchDepartments(),
+        fetchAcademicYears(),
+        fetchSemesters(),
+      ]);
 
-  const [electiveGroups, setElectiveGroups] = useState(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}electives`);
-    return saved ? JSON.parse(saved) : INITIAL_ELECTIVE_GROUPS;
-  });
+      setSections(sectionsData || []);
+      setFaculty(facultyData || []);
+      setSubjects(subjectsData || []);
+      setRooms(roomsData || []);
+      setElectiveGroups(electivesData || []);
+      setDepartments(departmentsData || []);
+      setAcademicYears(academicYearsData || []);
+      setSemesters(semestersData || []);
 
-  const [slots, setSlots] = useState(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}slots`);
-    return saved ? JSON.parse(saved) : INITIAL_TIMETABLE_SLOTS;
-  });
-
-  const [selectedSectionId, setSelectedSectionId] = useState(
-    sections[0]?.id || 'sec-ece-2a'
-  );
-
-  // Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}sections`, JSON.stringify(sections));
-  }, [sections]);
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}faculty`, JSON.stringify(faculty));
-  }, [faculty]);
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}subjects`, JSON.stringify(subjects));
-  }, [subjects]);
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}rooms`, JSON.stringify(rooms));
-  }, [rooms]);
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}electives`, JSON.stringify(electiveGroups));
-  }, [electiveGroups]);
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}slots`, JSON.stringify(slots));
-  }, [slots]);
-
-  // Reset to default starter configuration
-  const handleResetData = () => {
-    if (window.confirm('Reset all timetable data to initial starter state? Custom entries will be re-initialized.')) {
-      setSections(INITIAL_SECTIONS);
-      setFaculty(INITIAL_FACULTY);
-      setSubjects(INITIAL_SUBJECTS);
-      setRooms(INITIAL_ROOMS);
-      setElectiveGroups(INITIAL_ELECTIVE_GROUPS);
-      setSlots(INITIAL_TIMETABLE_SLOTS);
-      setSelectedSectionId(INITIAL_SECTIONS[0]?.id || 'sec-ece-2a');
-      localStorage.clear();
+      // Pick default selected section
+      if (sectionsData && sectionsData.length > 0) {
+        setSelectedSectionId((prev) => prev || sectionsData[0].id);
+      }
+    } catch (err) {
+      setInitError(
+        `Could not connect to backend: ${err.message}. Make sure the Spring Boot server is running at ${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}.`
+      );
+    } finally {
+      setLoadingInit(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  // ── Global loading screen ─────────────────────────────────────────────────────
+  if (loadingInit) {
+    return (
+      <div className="app-container">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: '1.5rem', color: 'var(--text-secondary)' }}>
+          <div className="spinner" />
+          <p style={{ fontSize: '1rem', fontWeight: '600' }}>Connecting to backend…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Connection error screen ───────────────────────────────────────────────────
+  if (initError) {
+    return (
+      <div className="app-container">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: '1.5rem', padding: '2rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem' }}>⚠️</div>
+          <h2 style={{ color: 'var(--danger)' }}>Backend Not Reachable</h2>
+          <p style={{ maxWidth: '540px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>{initError}</p>
+          <button className="btn btn-primary" onClick={loadAll}>↺ Retry Connection</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onResetData={handleResetData}
+        onResetData={loadAll}
       />
 
       <main className="main-content">
@@ -110,7 +130,6 @@ export default function App() {
             faculty={faculty}
             subjects={subjects}
             rooms={rooms}
-            slots={slots}
             setActiveTab={setActiveTab}
           />
         )}
@@ -125,21 +144,20 @@ export default function App() {
             setSubjects={setSubjects}
             rooms={rooms}
             setRooms={setRooms}
-            semesters={DEFAULT_SEMESTERS}
-            academicYears={DEFAULT_ACADEMIC_YEARS}
             electiveGroups={electiveGroups}
             setElectiveGroups={setElectiveGroups}
+            departments={departments}
+            academicYears={academicYears}
+            semesters={semesters}
+            onDataChanged={loadAll}
           />
         )}
 
         {activeTab === 'generator' && (
           <GeneratorWorkflow
             sections={sections}
-            semesters={DEFAULT_SEMESTERS}
-            academicYears={DEFAULT_ACADEMIC_YEARS}
-            faculty={faculty}
-            subjects={subjects}
-            rooms={rooms}
+            semesters={semesters}
+            academicYears={academicYears}
             selectedSectionId={selectedSectionId}
             setSelectedSectionId={setSelectedSectionId}
             setActiveTab={setActiveTab}
@@ -151,13 +169,10 @@ export default function App() {
             sections={sections}
             selectedSectionId={selectedSectionId}
             setSelectedSectionId={setSelectedSectionId}
-            semesters={DEFAULT_SEMESTERS}
-            academicYears={DEFAULT_ACADEMIC_YEARS}
+            semesters={semesters}
             faculty={faculty}
             subjects={subjects}
             rooms={rooms}
-            slots={slots}
-            setSlots={setSlots}
           />
         )}
       </main>
