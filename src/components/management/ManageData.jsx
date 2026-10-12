@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import {
-  createSection, deleteSection as apiDeleteSection,
-  createFaculty, deleteFaculty as apiDeleteFaculty,
-  createSubject, deleteSubject as apiDeleteSubject,
-  createRoom, deleteRoom as apiDeleteRoom,
-  createElectiveGroup, deleteElectiveGroup as apiDeleteElectiveGroup,
+  createSection, updateSection, deleteSection as apiDeleteSection,
+  createFaculty, updateFaculty, deleteFaculty as apiDeleteFaculty,
+  createSubject, updateSubject, deleteSubject as apiDeleteSubject,
+  createRoom, updateRoom, deleteRoom as apiDeleteRoom,
+  createElectiveGroup, updateElectiveGroup, deleteElectiveGroup as apiDeleteElectiveGroup,
 } from '../../api/api';
 
 export default function ManageData({
@@ -26,6 +26,13 @@ export default function ManageData({
   const defaultDeptId = departments[0]?.id || '';
   const defaultAyId = academicYears[0]?.id || '';
   const defaultSemId = semesters[0]?.id || '';
+
+  // ── Edit states ──────────────────────────────────────────────────────────────
+  const [editingSectionId, setEditingSectionId] = useState(null);
+  const [editingFacultyId, setEditingFacultyId] = useState(null);
+  const [editingSubjectId, setEditingSubjectId] = useState(null);
+  const [editingRoomId, setEditingRoomId] = useState(null);
+  const [editingElectiveGroupId, setEditingElectiveGroupId] = useState(null);
 
   // ── Form states ──────────────────────────────────────────────────────────────
   const [newSection, setNewSection] = useState({
@@ -52,7 +59,7 @@ export default function ManageData({
   });
 
   const [newRoom, setNewRoom] = useState({
-    roomNumber: '', type: 'CLASSROOM', capacity: 70, block: '',
+    roomNumber: '', type: 'CLASSROOM', capacity: 70, block: '', departmentId: '',
   });
 
   const [newElectiveGroup, setNewElectiveGroup] = useState({
@@ -79,105 +86,285 @@ export default function ManageData({
     }
   };
 
+  const cancelAllEdits = () => {
+    resetSectionForm();
+    resetFacultyForm();
+    resetSubjectForm();
+    resetRoomForm();
+    resetElectiveGroupForm();
+    clearMessages();
+  };
+
   // ── Sections ─────────────────────────────────────────────────────────────────
-  const handleAddSection = (e) => {
+  const resetSectionForm = () => {
+    setNewSection({
+      code: '', name: '', studentCount: 65,
+      departmentId: defaultDeptId,
+      academicYearId: defaultAyId,
+      semesterId: defaultSemId,
+      defaultRoomId: '',
+    });
+    setEditingSectionId(null);
+  };
+
+  const startEditSection = (s) => {
+    clearMessages();
+    setEditingSectionId(s.id);
+    setNewSection({
+      code: s.code || '',
+      name: s.name || '',
+      studentCount: s.studentCount ?? 60,
+      departmentId: s.departmentId || defaultDeptId,
+      academicYearId: s.academicYearId || defaultAyId,
+      semesterId: s.semesterId || defaultSemId,
+      defaultRoomId: s.defaultRoomId || '',
+    });
+  };
+
+  const handleSaveSection = (e) => {
     e.preventDefault();
     const dto = {
-      code: newSection.code,
-      name: newSection.name,
+      code: newSection.code.trim(),
+      name: newSection.name.trim(),
       studentCount: Number(newSection.studentCount),
       departmentId: Number(newSection.departmentId),
       academicYearId: Number(newSection.academicYearId),
       semesterId: Number(newSection.semesterId),
       defaultRoomId: newSection.defaultRoomId ? Number(newSection.defaultRoomId) : null,
     };
-    withSave(() => createSection(dto), `Section "${dto.code}" added successfully.`, () =>
-      setNewSection({ code: '', name: '', studentCount: 65, departmentId: defaultDeptId, academicYearId: defaultAyId, semesterId: defaultSemId, defaultRoomId: '' })
-    );
+    if (editingSectionId) {
+      withSave(
+        () => updateSection(editingSectionId, dto),
+        `Section "${dto.code}" updated successfully.`,
+        resetSectionForm
+      );
+    } else {
+      withSave(
+        () => createSection(dto),
+        `Section "${dto.code}" added successfully.`,
+        resetSectionForm
+      );
+    }
   };
 
   const handleDeleteSection = (id) => {
     if (!window.confirm('Delete this section? This will also remove its timetable slots.')) return;
-    withSave(() => apiDeleteSection(id), 'Section deleted.');
+    withSave(() => apiDeleteSection(id), 'Section deleted.', () => {
+      if (editingSectionId === id) resetSectionForm();
+    });
   };
 
   // ── Faculty ──────────────────────────────────────────────────────────────────
-  const handleAddFaculty = (e) => {
+  const resetFacultyForm = () => {
+    setNewFaculty({
+      name: '', designation: 'Assistant Professor',
+      email: '',
+      maxWeeklyHours: 18,
+      departmentId: defaultDeptId,
+    });
+    setEditingFacultyId(null);
+  };
+
+  const startEditFaculty = (f) => {
+    clearMessages();
+    setEditingFacultyId(f.id);
+    setNewFaculty({
+      name: f.name || '',
+      designation: f.designation || 'Assistant Professor',
+      email: f.email || '',
+      maxWeeklyHours: f.maxWeeklyHours ?? 18,
+      departmentId: f.departmentId || defaultDeptId,
+    });
+  };
+
+  const handleSaveFaculty = (e) => {
     e.preventDefault();
     const dto = {
-      name: newFaculty.name,
-      designation: newFaculty.designation,
-      email: newFaculty.email || null,
+      name: newFaculty.name.trim(),
+      designation: newFaculty.designation.trim(),
+      email: newFaculty.email ? newFaculty.email.trim() : null,
       maxWeeklyHours: Number(newFaculty.maxWeeklyHours),
       departmentId: Number(newFaculty.departmentId),
     };
-    withSave(() => createFaculty(dto), `Faculty "${dto.name}" added.`, () =>
-      setNewFaculty({ name: '', designation: 'Assistant Professor', email: '', maxWeeklyHours: 18, departmentId: defaultDeptId })
-    );
+    if (editingFacultyId) {
+      withSave(
+        () => updateFaculty(editingFacultyId, dto),
+        `Faculty "${dto.name}" updated successfully.`,
+        resetFacultyForm
+      );
+    } else {
+      withSave(
+        () => createFaculty(dto),
+        `Faculty "${dto.name}" added.`,
+        resetFacultyForm
+      );
+    }
   };
 
   const handleDeleteFaculty = (id) => {
     if (!window.confirm('Delete this faculty member?')) return;
-    withSave(() => apiDeleteFaculty(id), 'Faculty deleted.');
+    withSave(() => apiDeleteFaculty(id), 'Faculty deleted.', () => {
+      if (editingFacultyId === id) resetFacultyForm();
+    });
   };
 
   // ── Subjects ─────────────────────────────────────────────────────────────────
-  const handleAddSubject = (e) => {
+  const resetSubjectForm = () => {
+    setNewSubject({
+      code: '', name: '', shortName: '',
+      type: 'THEORY',
+      departmentId: defaultDeptId,
+      semesterId: defaultSemId,
+      electiveGroupId: '',
+    });
+    setEditingSubjectId(null);
+  };
+
+  const startEditSubject = (sub) => {
+    clearMessages();
+    setEditingSubjectId(sub.id);
+    setNewSubject({
+      code: sub.code || '',
+      name: sub.name || '',
+      shortName: sub.shortName || '',
+      type: sub.type || 'THEORY',
+      departmentId: sub.departmentId || defaultDeptId,
+      semesterId: sub.semesterId || defaultSemId,
+      electiveGroupId: sub.electiveGroupId || '',
+    });
+  };
+
+  const handleSaveSubject = (e) => {
     e.preventDefault();
     const dto = {
-      code: newSubject.code || null,
-      name: newSubject.name,
-      shortName: newSubject.shortName,
+      code: newSubject.code ? newSubject.code.trim() : null,
+      name: newSubject.name.trim(),
+      shortName: newSubject.shortName.trim(),
       type: newSubject.type,
       departmentId: Number(newSubject.departmentId),
       semesterId: Number(newSubject.semesterId),
       electiveGroupId: newSubject.electiveGroupId ? Number(newSubject.electiveGroupId) : null,
     };
-    withSave(() => createSubject(dto), `Subject "${dto.name}" added.`, () =>
-      setNewSubject({ code: '', name: '', shortName: '', type: 'THEORY', departmentId: defaultDeptId, semesterId: defaultSemId, electiveGroupId: '' })
-    );
+    if (editingSubjectId) {
+      withSave(
+        () => updateSubject(editingSubjectId, dto),
+        `Subject "${dto.name}" updated successfully.`,
+        resetSubjectForm
+      );
+    } else {
+      withSave(
+        () => createSubject(dto),
+        `Subject "${dto.name}" added.`,
+        resetSubjectForm
+      );
+    }
   };
 
   const handleDeleteSubject = (id) => {
     if (!window.confirm('Delete this subject?')) return;
-    withSave(() => apiDeleteSubject(id), 'Subject deleted.');
+    withSave(() => apiDeleteSubject(id), 'Subject deleted.', () => {
+      if (editingSubjectId === id) resetSubjectForm();
+    });
   };
 
   // ── Rooms ────────────────────────────────────────────────────────────────────
-  const handleAddRoom = (e) => {
+  const resetRoomForm = () => {
+    setNewRoom({
+      roomNumber: '', type: 'CLASSROOM', capacity: 70, block: '', departmentId: '',
+    });
+    setEditingRoomId(null);
+  };
+
+  const startEditRoom = (r) => {
+    clearMessages();
+    setEditingRoomId(r.id);
+    setNewRoom({
+      roomNumber: r.roomNumber || '',
+      type: r.type || 'CLASSROOM',
+      capacity: r.capacity ?? 70,
+      block: r.block || '',
+      departmentId: r.departmentId || '',
+    });
+  };
+
+  const handleSaveRoom = (e) => {
     e.preventDefault();
     const dto = {
-      roomNumber: newRoom.roomNumber,
+      roomNumber: newRoom.roomNumber.trim(),
       type: newRoom.type,
       capacity: Number(newRoom.capacity),
-      block: newRoom.block || null,
+      block: newRoom.block ? newRoom.block.trim() : null,
+      departmentId: newRoom.departmentId ? Number(newRoom.departmentId) : null,
     };
-    withSave(() => createRoom(dto), `Room "${dto.roomNumber}" added.`, () =>
-      setNewRoom({ roomNumber: '', type: 'CLASSROOM', capacity: 70, block: '' })
-    );
+    if (editingRoomId) {
+      withSave(
+        () => updateRoom(editingRoomId, dto),
+        `Room "${dto.roomNumber}" updated successfully.`,
+        resetRoomForm
+      );
+    } else {
+      withSave(
+        () => createRoom(dto),
+        `Room "${dto.roomNumber}" added.`,
+        resetRoomForm
+      );
+    }
   };
 
   const handleDeleteRoom = (id) => {
     if (!window.confirm('Delete this room?')) return;
-    withSave(() => apiDeleteRoom(id), 'Room deleted.');
+    withSave(() => apiDeleteRoom(id), 'Room deleted.', () => {
+      if (editingRoomId === id) resetRoomForm();
+    });
   };
 
   // ── Elective Groups ───────────────────────────────────────────────────────────
-  const handleAddElectiveGroup = (e) => {
+  const resetElectiveGroupForm = () => {
+    setNewElectiveGroup({
+      name: '',
+      departmentId: defaultDeptId,
+      semesterId: defaultSemId,
+    });
+    setEditingElectiveGroupId(null);
+  };
+
+  const startEditElectiveGroup = (g) => {
+    clearMessages();
+    setEditingElectiveGroupId(g.id);
+    setNewElectiveGroup({
+      name: g.name || '',
+      departmentId: g.departmentId || defaultDeptId,
+      semesterId: g.semesterId || defaultSemId,
+    });
+  };
+
+  const handleSaveElectiveGroup = (e) => {
     e.preventDefault();
     const dto = {
-      name: newElectiveGroup.name,
+      name: newElectiveGroup.name.trim(),
       departmentId: Number(newElectiveGroup.departmentId),
       semesterId: Number(newElectiveGroup.semesterId),
     };
-    withSave(() => createElectiveGroup(dto), `Elective group "${dto.name}" added.`, () =>
-      setNewElectiveGroup({ name: '', departmentId: defaultDeptId, semesterId: defaultSemId })
-    );
+    if (editingElectiveGroupId) {
+      withSave(
+        () => updateElectiveGroup(editingElectiveGroupId, dto),
+        `Elective group "${dto.name}" updated successfully.`,
+        resetElectiveGroupForm
+      );
+    } else {
+      withSave(
+        () => createElectiveGroup(dto),
+        `Elective group "${dto.name}" added.`,
+        resetElectiveGroupForm
+      );
+    }
   };
 
   const handleDeleteElectiveGroup = (id) => {
     if (!window.confirm('Delete this elective group?')) return;
-    withSave(() => apiDeleteElectiveGroup(id), 'Elective group deleted.');
+    withSave(() => apiDeleteElectiveGroup(id), 'Elective group deleted.', () => {
+      if (editingElectiveGroupId === id) resetElectiveGroupForm();
+    });
   };
 
   return (
@@ -195,19 +382,19 @@ export default function ManageData({
 
       {/* Sub Tabs */}
       <div className="sub-tabs">
-        <button className={`sub-tab-btn ${subTab === 'sections' ? 'active' : ''}`} onClick={() => { setSubTab('sections'); clearMessages(); }}>
+        <button className={`sub-tab-btn ${subTab === 'sections' ? 'active' : ''}`} onClick={() => { setSubTab('sections'); cancelAllEdits(); }}>
           👥 Sections ({sections.length})
         </button>
-        <button className={`sub-tab-btn ${subTab === 'faculty' ? 'active' : ''}`} onClick={() => { setSubTab('faculty'); clearMessages(); }}>
+        <button className={`sub-tab-btn ${subTab === 'faculty' ? 'active' : ''}`} onClick={() => { setSubTab('faculty'); cancelAllEdits(); }}>
           👨‍🏫 Faculty ({faculty.length})
         </button>
-        <button className={`sub-tab-btn ${subTab === 'subjects' ? 'active' : ''}`} onClick={() => { setSubTab('subjects'); clearMessages(); }}>
+        <button className={`sub-tab-btn ${subTab === 'subjects' ? 'active' : ''}`} onClick={() => { setSubTab('subjects'); cancelAllEdits(); }}>
           📚 Subjects &amp; Labs ({subjects.length})
         </button>
-        <button className={`sub-tab-btn ${subTab === 'rooms' ? 'active' : ''}`} onClick={() => { setSubTab('rooms'); clearMessages(); }}>
+        <button className={`sub-tab-btn ${subTab === 'rooms' ? 'active' : ''}`} onClick={() => { setSubTab('rooms'); cancelAllEdits(); }}>
           🏛️ Classrooms &amp; Labs ({rooms.length})
         </button>
-        <button className={`sub-tab-btn ${subTab === 'electives' ? 'active' : ''}`} onClick={() => { setSubTab('electives'); clearMessages(); }}>
+        <button className={`sub-tab-btn ${subTab === 'electives' ? 'active' : ''}`} onClick={() => { setSubTab('electives'); cancelAllEdits(); }}>
           🔀 Electives ({electiveGroups.length})
         </button>
       </div>
@@ -216,9 +403,11 @@ export default function ManageData({
       {subTab === 'sections' && (
         <div>
           <div className="card">
-            <div className="card-header"><h3>Add New Section</h3></div>
+            <div className="card-header">
+              <h3>{editingSectionId ? '✏️ Edit Section' : 'Add New Section'}</h3>
+            </div>
             <div className="card-body">
-              <form onSubmit={handleAddSection}>
+              <form onSubmit={handleSaveSection}>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Section Code * (e.g. ECE-A)</label>
@@ -270,9 +459,16 @@ export default function ManageData({
                     </select>
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : '+ Add Section'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingSectionId ? '✓ Save Changes' : '+ Add Section'}
+                  </button>
+                  {editingSectionId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={resetSectionForm}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -298,7 +494,9 @@ export default function ManageData({
                       <td>{s.academicYearName || '—'}</td>
                       <td>{s.studentCount}</td>
                       <td>{s.defaultRoomNumber || '—'}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-outline-primary btn-sm" style={{ marginRight: '0.4rem' }} disabled={saving}
+                          onClick={() => startEditSection(s)}>Edit</button>
                         <button className="btn btn-outline-danger btn-sm" disabled={saving}
                           onClick={() => handleDeleteSection(s.id)}>Delete</button>
                       </td>
@@ -318,9 +516,11 @@ export default function ManageData({
       {subTab === 'faculty' && (
         <div>
           <div className="card">
-            <div className="card-header"><h3>Add Faculty Member</h3></div>
+            <div className="card-header">
+              <h3>{editingFacultyId ? '✏️ Edit Faculty Member' : 'Add Faculty Member'}</h3>
+            </div>
             <div className="card-body">
-              <form onSubmit={handleAddFaculty}>
+              <form onSubmit={handleSaveFaculty}>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Faculty Name *</label>
@@ -356,9 +556,16 @@ export default function ManageData({
                       onChange={(e) => setNewFaculty({ ...newFaculty, maxWeeklyHours: e.target.value })} />
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : '+ Add Faculty'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingFacultyId ? '✓ Save Changes' : '+ Add Faculty'}
+                  </button>
+                  {editingFacultyId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={resetFacultyForm}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -378,7 +585,9 @@ export default function ManageData({
                       <td>{f.departmentCode || '—'}</td>
                       <td>{f.maxWeeklyHours} hrs</td>
                       <td>{f.email || '—'}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-outline-primary btn-sm" style={{ marginRight: '0.4rem' }} disabled={saving}
+                          onClick={() => startEditFaculty(f)}>Edit</button>
                         <button className="btn btn-outline-danger btn-sm" disabled={saving}
                           onClick={() => handleDeleteFaculty(f.id)}>Delete</button>
                       </td>
@@ -398,9 +607,11 @@ export default function ManageData({
       {subTab === 'subjects' && (
         <div>
           <div className="card">
-            <div className="card-header"><h3>Add Course, Lab, or Institutional Activity</h3></div>
+            <div className="card-header">
+              <h3>{editingSubjectId ? '✏️ Edit Course, Lab, or Institutional Activity' : 'Add Course, Lab, or Institutional Activity'}</h3>
+            </div>
             <div className="card-body">
-              <form onSubmit={handleAddSubject}>
+              <form onSubmit={handleSaveSubject}>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Course Title *</label>
@@ -453,9 +664,16 @@ export default function ManageData({
                     </select>
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : '+ Add Course / Lab'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingSubjectId ? '✓ Save Changes' : '+ Add Course / Lab'}
+                  </button>
+                  {editingSubjectId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={resetSubjectForm}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -481,7 +699,9 @@ export default function ManageData({
                       <td>{sub.shortName}</td>
                       <td>{sub.semesterCode || '—'}</td>
                       <td>{sub.departmentCode || '—'}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-outline-primary btn-sm" style={{ marginRight: '0.4rem' }} disabled={saving}
+                          onClick={() => startEditSubject(sub)}>Edit</button>
                         <button className="btn btn-outline-danger btn-sm" disabled={saving}
                           onClick={() => handleDeleteSubject(sub.id)}>Delete</button>
                       </td>
@@ -501,9 +721,11 @@ export default function ManageData({
       {subTab === 'rooms' && (
         <div>
           <div className="card">
-            <div className="card-header"><h3>Add Classroom or Specialized Lab</h3></div>
+            <div className="card-header">
+              <h3>{editingRoomId ? '✏️ Edit Classroom or Specialized Lab' : 'Add Classroom or Specialized Lab'}</h3>
+            </div>
             <div className="card-body">
-              <form onSubmit={handleAddRoom}>
+              <form onSubmit={handleSaveRoom}>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Room Number / Name *</label>
@@ -530,9 +752,16 @@ export default function ManageData({
                       onChange={(e) => setNewRoom({ ...newRoom, block: e.target.value })} />
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : '+ Add Room / Lab'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingRoomId ? '✓ Save Changes' : '+ Add Room / Lab'}
+                  </button>
+                  {editingRoomId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={resetRoomForm}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -555,7 +784,9 @@ export default function ManageData({
                       </td>
                       <td>{r.capacity} seats</td>
                       <td>{r.block || '—'}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-outline-primary btn-sm" style={{ marginRight: '0.4rem' }} disabled={saving}
+                          onClick={() => startEditRoom(r)}>Edit</button>
                         <button className="btn btn-outline-danger btn-sm" disabled={saving}
                           onClick={() => handleDeleteRoom(r.id)}>Delete</button>
                       </td>
@@ -575,9 +806,11 @@ export default function ManageData({
       {subTab === 'electives' && (
         <div>
           <div className="card">
-            <div className="card-header"><h3>Add Elective Group</h3></div>
+            <div className="card-header">
+              <h3>{editingElectiveGroupId ? '✏️ Edit Elective Group' : 'Add Elective Group'}</h3>
+            </div>
             <div className="card-body">
-              <form onSubmit={handleAddElectiveGroup}>
+              <form onSubmit={handleSaveElectiveGroup}>
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Elective Group Title *</label>
@@ -601,9 +834,16 @@ export default function ManageData({
                     </select>
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : '+ Add Elective Group'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingElectiveGroupId ? '✓ Save Changes' : '+ Add Elective Group'}
+                  </button>
+                  {editingElectiveGroupId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={resetElectiveGroupForm}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -622,7 +862,9 @@ export default function ManageData({
                       <td>{g.departmentCode || '—'}</td>
                       <td>{g.semesterCode || '—'}</td>
                       <td>{g.electiveSubjects ? g.electiveSubjects.length : 0} subject(s)</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-outline-primary btn-sm" style={{ marginRight: '0.4rem' }} disabled={saving}
+                          onClick={() => startEditElectiveGroup(g)}>Edit</button>
                         <button className="btn btn-outline-danger btn-sm" disabled={saving}
                           onClick={() => handleDeleteElectiveGroup(g.id)}>Delete</button>
                       </td>

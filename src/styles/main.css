@@ -247,6 +247,17 @@ body {
   background: var(--danger-light);
 }
 
+.btn-outline-primary {
+  background: transparent;
+  color: var(--primary);
+  border-color: #93c5fd;
+}
+
+.btn-outline-primary:hover {
+  background: #eff6ff;
+  color: var(--primary-hover);
+}
+
 .btn-sm {
   padding: 0.35rem 0.65rem;
   font-size: 0.78rem;

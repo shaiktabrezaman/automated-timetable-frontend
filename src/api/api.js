@@ -50,6 +50,9 @@ export const fetchSections = () => apiFetch('/api/sections');
 export const createSection = (dto) =>
   apiFetch('/api/sections', { method: 'POST', body: JSON.stringify(dto) });
 
+export const updateSection = (id, dto) =>
+  apiFetch(`/api/sections/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+
 export const deleteSection = (id) =>
   apiFetch(`/api/sections/${id}`, { method: 'DELETE' });
 
@@ -59,6 +62,9 @@ export const fetchFaculty = () => apiFetch('/api/faculty');
 
 export const createFaculty = (dto) =>
   apiFetch('/api/faculty', { method: 'POST', body: JSON.stringify(dto) });
+
+export const updateFaculty = (id, dto) =>
+  apiFetch(`/api/faculty/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
 
 export const deleteFaculty = (id) =>
   apiFetch(`/api/faculty/${id}`, { method: 'DELETE' });
@@ -70,6 +76,9 @@ export const fetchSubjects = () => apiFetch('/api/subjects');
 export const createSubject = (dto) =>
   apiFetch('/api/subjects', { method: 'POST', body: JSON.stringify(dto) });
 
+export const updateSubject = (id, dto) =>
+  apiFetch(`/api/subjects/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+
 export const deleteSubject = (id) =>
   apiFetch(`/api/subjects/${id}`, { method: 'DELETE' });
 
@@ -80,6 +89,9 @@ export const fetchRooms = () => apiFetch('/api/rooms');
 export const createRoom = (dto) =>
   apiFetch('/api/rooms', { method: 'POST', body: JSON.stringify(dto) });
 
+export const updateRoom = (id, dto) =>
+  apiFetch(`/api/rooms/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+
 export const deleteRoom = (id) =>
   apiFetch(`/api/rooms/${id}`, { method: 'DELETE' });
 
@@ -89,6 +101,9 @@ export const fetchElectiveGroups = () => apiFetch('/api/elective-groups');
 
 export const createElectiveGroup = (dto) =>
   apiFetch('/api/elective-groups', { method: 'POST', body: JSON.stringify(dto) });
+
+export const updateElectiveGroup = (id, dto) =>
+  apiFetch(`/api/elective-groups/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
 
 export const deleteElectiveGroup = (id) =>
   apiFetch(`/api/elective-groups/${id}`, { method: 'DELETE' });
