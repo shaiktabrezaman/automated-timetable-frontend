@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Navbar from './components/layout/Navbar';
 import Dashboard from './components/dashboard/Dashboard';
 import ManageData from './components/management/ManageData';
@@ -31,16 +31,24 @@ export default function App() {
   const [academicYears, setAcademicYears] = useState([]);
   const [semesters, setSemesters] = useState([]);
 
+  // ── Manage Data persistent tab and section state ─────────────────────────────
+  const [manageSubTab, setManageSubTab] = useState('sections');
+  const [manageOfferingSectionId, setManageOfferingSectionId] = useState(null);
+
   // ── Shared selected section (used across Generator + Timetable tabs) ─────────
   const [selectedSectionId, setSelectedSectionId] = useState(null);
 
   // ── Global loading / error state ─────────────────────────────────────────────
   const [loadingInit, setLoadingInit] = useState(true);
   const [initError, setInitError] = useState(null);
+  const initialLoadDoneRef = useRef(false);
 
   // ── Load all reference data from backend ─────────────────────────────────────
   const loadAll = useCallback(async () => {
-    setLoadingInit(true);
+    // Only display the full-screen connecting spinner on initial startup
+    if (!initialLoadDoneRef.current) {
+      setLoadingInit(true);
+    }
     setInitError(null);
     try {
       const [
@@ -72,14 +80,18 @@ export default function App() {
       setAcademicYears(academicYearsData || []);
       setSemesters(semestersData || []);
 
-      // Pick default selected section
+      // Pick default selected section if none selected
       if (sectionsData && sectionsData.length > 0) {
         setSelectedSectionId((prev) => prev || sectionsData[0].id);
+        setManageOfferingSectionId((prev) => prev || sectionsData[0].id);
       }
+      initialLoadDoneRef.current = true;
     } catch (err) {
-      setInitError(
-        `Could not connect to backend: ${err.message}. Make sure the Spring Boot server is running at ${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}.`
-      );
+      if (!initialLoadDoneRef.current) {
+        setInitError(
+          `Could not connect to backend: ${err.message}. Make sure the Spring Boot server is running at ${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}.`
+        );
+      }
     } finally {
       setLoadingInit(false);
     }
@@ -150,6 +162,10 @@ export default function App() {
             academicYears={academicYears}
             semesters={semesters}
             onDataChanged={loadAll}
+            subTab={manageSubTab}
+            setSubTab={setManageSubTab}
+            selectedOfferingSectionId={manageOfferingSectionId}
+            setSelectedOfferingSectionId={setManageOfferingSectionId}
           />
         )}
 
@@ -173,6 +189,8 @@ export default function App() {
             faculty={faculty}
             subjects={subjects}
             rooms={rooms}
+            departments={departments}
+            academicYears={academicYears}
           />
         )}
       </main>

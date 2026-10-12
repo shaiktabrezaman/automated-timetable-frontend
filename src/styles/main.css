@@ -373,10 +373,14 @@ body {
 /* Sub Tabs inside Manage Data */
 .sub-tabs {
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 1.25rem;
-  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  overflow: visible;
+  width: 100%;
 }
 
 .sub-tab-btn {

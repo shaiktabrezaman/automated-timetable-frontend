@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
+  createDepartment, updateDepartment, deleteDepartment as apiDeleteDepartment,
   createSection, updateSection, deleteSection as apiDeleteSection,
   createFaculty, updateFaculty, deleteFaculty as apiDeleteFaculty,
   createSubject, updateSubject, deleteSubject as apiDeleteSubject,
   createRoom, updateRoom, deleteRoom as apiDeleteRoom,
   createElectiveGroup, updateElectiveGroup, deleteElectiveGroup as apiDeleteElectiveGroup,
+  fetchCourseOfferings, createCourseOffering, updateCourseOffering, deleteCourseOffering as apiDeleteCourseOffering,
 } from '../../api/api';
 
 export default function ManageData({
@@ -17,8 +19,14 @@ export default function ManageData({
   academicYears,
   semesters,
   onDataChanged,
+  subTab: propSubTab,
+  setSubTab: propSetSubTab,
+  selectedOfferingSectionId: propOfferingSectionId,
+  setSelectedOfferingSectionId: propSetOfferingSectionId,
 }) {
-  const [subTab, setSubTab] = useState('sections');
+  const [internalSubTab, setInternalSubTab] = useState('sections');
+  const subTab = propSubTab !== undefined ? propSubTab : internalSubTab;
+  const setSubTab = propSetSubTab || setInternalSubTab;
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
@@ -28,13 +36,16 @@ export default function ManageData({
   const defaultSemId = semesters[0]?.id || '';
 
   // ── Edit states ──────────────────────────────────────────────────────────────
+  const [editingDepartmentId, setEditingDepartmentId] = useState(null);
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [editingFacultyId, setEditingFacultyId] = useState(null);
   const [editingSubjectId, setEditingSubjectId] = useState(null);
   const [editingRoomId, setEditingRoomId] = useState(null);
   const [editingElectiveGroupId, setEditingElectiveGroupId] = useState(null);
+  const [editingOfferingId, setEditingOfferingId] = useState(null);
 
   // ── Form states ──────────────────────────────────────────────────────────────
+  const [newDepartment, setNewDepartment] = useState({ code: '', name: '' });
   const [newSection, setNewSection] = useState({
     code: '', name: '', studentCount: 65,
     departmentId: defaultDeptId,
@@ -68,6 +79,32 @@ export default function ManageData({
     semesterId: defaultSemId,
   });
 
+  // ── Course Offerings State ──────────────────────────────────────────────────
+  const [internalOfferingSectionId, setInternalOfferingSectionId] = useState(sections[0]?.id || '');
+  const selectedOfferingSectionId = propOfferingSectionId !== undefined && propOfferingSectionId !== null
+    ? propOfferingSectionId
+    : internalOfferingSectionId;
+  const setSelectedOfferingSectionId = propSetOfferingSectionId || setInternalOfferingSectionId;
+
+  const [offerings, setOfferings] = useState([]);
+  const [loadingOfferings, setLoadingOfferings] = useState(false);
+  const [newOffering, setNewOffering] = useState({
+    sectionId: selectedOfferingSectionId || sections[0]?.id || '',
+    subjectId: '',
+    weeklyPeriods: 3,
+    durationPeriods: 1,
+    assignedFacultyId: '',
+    preferredRoomId: '',
+    active: true,
+  });
+
+  useEffect(() => {
+    if (!selectedOfferingSectionId && sections.length > 0) {
+      setSelectedOfferingSectionId(sections[0].id);
+      setNewOffering((prev) => ({ ...prev, sectionId: prev.sectionId || sections[0].id }));
+    }
+  }, [sections, selectedOfferingSectionId, setSelectedOfferingSectionId]);
+
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const clearMessages = () => { setFormError(''); setFormSuccess(''); };
 
@@ -80,18 +117,29 @@ export default function ManageData({
       if (resetFn) resetFn();
       await onDataChanged();
     } catch (err) {
-      setFormError(err.message || 'Operation failed.');
+      const msg = err.message || 'Operation failed.';
+      if (
+        msg.toLowerCase().includes('foreign key') ||
+        msg.toLowerCase().includes('constraint') ||
+        msg.toLowerCase().includes('integrity')
+      ) {
+        setFormError('Cannot delete or modify record: It is currently referenced by other existing data (such as sections, faculty, subjects, or timetables). Please reassign or delete related records first.');
+      } else {
+        setFormError(msg);
+      }
     } finally {
       setSaving(false);
     }
   };
 
   const cancelAllEdits = () => {
+    resetDepartmentForm();
     resetSectionForm();
     resetFacultyForm();
     resetSubjectForm();
     resetRoomForm();
     resetElectiveGroupForm();
+    resetOfferingForm();
     clearMessages();
   };
 
@@ -367,12 +415,211 @@ export default function ManageData({
     });
   };
 
+  // ── Course Offerings ────────────────────────────────────────────────────────
+  const loadOfferings = useCallback(async (secId) => {
+    if (!secId) {
+      setOfferings([]);
+      return;
+    }
+    setLoadingOfferings(true);
+    try {
+      const data = await fetchCourseOfferings(secId);
+      setOfferings(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setFormError('Failed to load course offerings: ' + (err.message || 'Error'));
+    } finally {
+      setLoadingOfferings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (subTab === 'offerings' && selectedOfferingSectionId) {
+      loadOfferings(selectedOfferingSectionId);
+    }
+  }, [subTab, selectedOfferingSectionId, loadOfferings]);
+
+  const resetOfferingForm = (secId) => {
+    const sId = secId !== undefined ? secId : selectedOfferingSectionId;
+    setEditingOfferingId(null);
+    setNewOffering({
+      sectionId: sId || '',
+      subjectId: '',
+      weeklyPeriods: 3,
+      durationPeriods: 1,
+      assignedFacultyId: '',
+      preferredRoomId: '',
+      active: true,
+    });
+  };
+
+  const handleOfferingSectionChange = (secId) => {
+    const id = secId ? Number(secId) : '';
+    setSelectedOfferingSectionId(id);
+    resetOfferingForm(id);
+    loadOfferings(id);
+  };
+
+  const startEditOffering = (offering) => {
+    clearMessages();
+    setEditingOfferingId(offering.id);
+    setNewOffering({
+      sectionId: offering.sectionId,
+      subjectId: offering.subjectId,
+      weeklyPeriods: offering.weeklyPeriods,
+      durationPeriods: offering.durationPeriods,
+      assignedFacultyId: offering.assignedFacultyId || '',
+      preferredRoomId: offering.preferredRoomId || '',
+      active: offering.active ?? true,
+    });
+    if (offering.sectionId !== selectedOfferingSectionId) {
+      setSelectedOfferingSectionId(offering.sectionId);
+    }
+  };
+
+  const handleSaveOffering = (e) => {
+    e.preventDefault();
+    clearMessages();
+
+    if (!newOffering.sectionId) {
+      setFormError('Section is required.');
+      return;
+    }
+    if (!newOffering.subjectId) {
+      setFormError('Subject is required.');
+      return;
+    }
+
+    const weekly = Number(newOffering.weeklyPeriods);
+    const duration = Number(newOffering.durationPeriods);
+
+    if (isNaN(weekly) || weekly < 1) {
+      setFormError('Weekly periods must be at least 1.');
+      return;
+    }
+    if (isNaN(duration) || duration < 1) {
+      setFormError('Consecutive periods per session must be at least 1.');
+      return;
+    }
+    if (weekly < duration || (weekly % duration !== 0)) {
+      setFormError(`Weekly periods (${weekly}) must be greater than or equal to consecutive periods (${duration}) and divisible by consecutive periods.`);
+      return;
+    }
+
+    // Check duplicate on create
+    if (!editingOfferingId) {
+      const isDuplicate = offerings.some(
+        (o) => Number(o.subjectId) === Number(newOffering.subjectId) && Number(o.sectionId) === Number(newOffering.sectionId)
+      );
+      if (isDuplicate) {
+        const sub = subjects.find((s) => s.id === Number(newOffering.subjectId));
+        setFormError(`Course offering for "${sub ? sub.name : 'this subject'}" already exists for this section. Edit the existing record instead.`);
+        return;
+      }
+    }
+
+    const dto = {
+      sectionId: Number(newOffering.sectionId),
+      subjectId: Number(newOffering.subjectId),
+      weeklyPeriods: weekly,
+      durationPeriods: duration,
+      assignedFacultyId: newOffering.assignedFacultyId ? Number(newOffering.assignedFacultyId) : null,
+      preferredRoomId: newOffering.preferredRoomId ? Number(newOffering.preferredRoomId) : null,
+      active: Boolean(newOffering.active),
+    };
+
+    if (editingOfferingId) {
+      withSave(
+        () => updateCourseOffering(editingOfferingId, dto),
+        'Course offering updated successfully.',
+        () => {
+          resetOfferingForm(dto.sectionId);
+          loadOfferings(dto.sectionId);
+        }
+      );
+    } else {
+      withSave(
+        () => createCourseOffering(dto),
+        'Course offering added successfully.',
+        () => {
+          resetOfferingForm(dto.sectionId);
+          loadOfferings(dto.sectionId);
+        }
+      );
+    }
+  };
+
+  const handleDeleteOffering = (id) => {
+    if (!window.confirm('Delete this course offering?')) return;
+    withSave(
+      () => apiDeleteCourseOffering(id),
+      'Course offering deleted successfully.',
+      () => {
+        if (editingOfferingId === id) resetOfferingForm();
+        loadOfferings(selectedOfferingSectionId);
+      }
+    );
+  };
+
+  // ── Departments ──────────────────────────────────────────────────────────────
+  const resetDepartmentForm = () => {
+    setNewDepartment({ code: '', name: '' });
+    setEditingDepartmentId(null);
+  };
+
+  const startEditDepartment = (d) => {
+    clearMessages();
+    setEditingDepartmentId(d.id);
+    setNewDepartment({
+      code: d.code || '',
+      name: d.name || '',
+    });
+  };
+
+  const handleSaveDepartment = (e) => {
+    e.preventDefault();
+    const code = newDepartment.code.trim().toUpperCase();
+    const name = newDepartment.name.trim();
+    if (!code) {
+      setFormError('Department code is required.');
+      return;
+    }
+    if (!name) {
+      setFormError('Department name is required.');
+      return;
+    }
+    const dto = { code, name };
+    if (editingDepartmentId) {
+      withSave(
+        () => updateDepartment(editingDepartmentId, dto),
+        `Department "${dto.code}" updated successfully.`,
+        resetDepartmentForm
+      );
+    } else {
+      withSave(
+        () => createDepartment(dto),
+        `Department "${dto.code}" added successfully.`,
+        resetDepartmentForm
+      );
+    }
+  };
+
+  const handleDeleteDepartment = (id, code) => {
+    if (!window.confirm(`Delete department "${code || id}"? Note: Deletion will be rejected if sections, faculty, or subjects are assigned to this department.`)) return;
+    withSave(
+      () => apiDeleteDepartment(id),
+      `Department "${code || id}" deleted successfully.`,
+      () => {
+        if (editingDepartmentId === id) resetDepartmentForm();
+      }
+    );
+  };
+
   return (
     <div className="manage-data-view">
       <div className="page-header">
         <div className="page-title">
           <h2>Institutional Data Management</h2>
-          <p>Configure dynamic sections, faculty profiles, subjects/labs, rooms, and electives</p>
+          <p>Configure dynamic departments, sections, faculty profiles, subjects/labs, rooms, and electives</p>
         </div>
       </div>
 
@@ -382,6 +629,9 @@ export default function ManageData({
 
       {/* Sub Tabs */}
       <div className="sub-tabs">
+        <button className={`sub-tab-btn ${subTab === 'departments' ? 'active' : ''}`} onClick={() => { setSubTab('departments'); cancelAllEdits(); }}>
+          🏢 Departments ({departments.length})
+        </button>
         <button className={`sub-tab-btn ${subTab === 'sections' ? 'active' : ''}`} onClick={() => { setSubTab('sections'); cancelAllEdits(); }}>
           👥 Sections ({sections.length})
         </button>
@@ -397,7 +647,110 @@ export default function ManageData({
         <button className={`sub-tab-btn ${subTab === 'electives' ? 'active' : ''}`} onClick={() => { setSubTab('electives'); cancelAllEdits(); }}>
           🔀 Electives ({electiveGroups.length})
         </button>
+        <button className={`sub-tab-btn ${subTab === 'offerings' ? 'active' : ''}`} onClick={() => { setSubTab('offerings'); cancelAllEdits(); }}>
+          📋 Course Offerings
+        </button>
       </div>
+
+      {/* ─── DEPARTMENTS TAB ─────────────────────────────────────────────────── */}
+      {subTab === 'departments' && (
+        <div>
+          <div className="card">
+            <div className="card-header">
+              <h3>{editingDepartmentId ? '✏️ Edit Department' : 'Add New Department'}</h3>
+            </div>
+            <div className="card-body">
+              <form onSubmit={handleSaveDepartment}>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Department Code * (e.g. CSE, ECE, MECH)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. CSE"
+                      maxLength={20}
+                      value={newDepartment.code}
+                      onChange={(e) => setNewDepartment({ ...newDepartment, code: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Department Full Name *</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. Computer Science and Engineering"
+                      maxLength={100}
+                      value={newDepartment.name}
+                      onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '1rem' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingDepartmentId ? '✓ Save Changes' : '+ Add Department'}
+                  </button>
+                  {editingDepartmentId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={resetDepartmentForm}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3>Existing Departments ({departments.length})</h3>
+            </div>
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '140px' }}>Code</th>
+                    <th>Full Department Name</th>
+                    <th style={{ width: '160px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {departments.map((d) => (
+                    <tr key={d.id}>
+                      <td><strong>{d.code}</strong></td>
+                      <td>{d.name}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button
+                          className="btn btn-outline-primary btn-sm"
+                          style={{ marginRight: '0.4rem' }}
+                          disabled={saving}
+                          onClick={() => startEditDepartment(d)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-outline-danger btn-sm"
+                          disabled={saving}
+                          onClick={() => handleDeleteDepartment(d.id, d.code)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {departments.length === 0 && (
+                    <tr>
+                      <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>
+                        No departments found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── 1. SECTIONS TAB ────────────────────────────────────────────────── */}
       {subTab === 'sections' && (
@@ -872,6 +1225,297 @@ export default function ManageData({
                   ))}
                   {electiveGroups.length === 0 && (
                     <tr><td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No elective groups found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 6. COURSE OFFERINGS TAB ────────────────────────────────────────── */}
+      {subTab === 'offerings' && (
+        <div>
+          {/* Add / Edit Form Card */}
+          <div className="card">
+            <div className="card-header">
+              <h3>{editingOfferingId ? '✏️ Edit Course Offering' : 'Add Course Offering'}</h3>
+            </div>
+            <div className="card-body">
+              <form onSubmit={handleSaveOffering}>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Target Section *</label>
+                    <select
+                      className="form-control"
+                      value={newOffering.sectionId}
+                      onChange={(e) => {
+                        const secId = Number(e.target.value);
+                        setNewOffering({ ...newOffering, sectionId: secId });
+                        if (!editingOfferingId && secId !== selectedOfferingSectionId) {
+                          setSelectedOfferingSectionId(secId);
+                          loadOfferings(secId);
+                        }
+                      }}
+                      required
+                    >
+                      <option value="">-- Select Section --</option>
+                      {sections.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} — {s.name} ({s.semesterCode || 'Semester'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Subject / Laboratory *</label>
+                    <select
+                      className="form-control"
+                      value={newOffering.subjectId}
+                      onChange={(e) => {
+                        const subId = Number(e.target.value);
+                        const selectedSub = subjects.find((s) => s.id === subId);
+                        let defaultWeekly = newOffering.weeklyPeriods;
+                        let defaultDuration = newOffering.durationPeriods;
+                        if (selectedSub && !editingOfferingId) {
+                          if (selectedSub.type === 'LAB' || selectedSub.type === 'ACTIVITY') {
+                            defaultWeekly = 3;
+                            defaultDuration = 3;
+                          } else {
+                            defaultWeekly = 3;
+                            defaultDuration = 1;
+                          }
+                        }
+                        setNewOffering({
+                          ...newOffering,
+                          subjectId: subId,
+                          weeklyPeriods: defaultWeekly,
+                          durationPeriods: defaultDuration,
+                        });
+                      }}
+                      required
+                    >
+                      <option value="">-- Select Subject --</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code ? `${s.code} — ` : ''}{s.name} ({s.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Weekly Periods *</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="1"
+                      max="30"
+                      value={newOffering.weeklyPeriods}
+                      onChange={(e) => setNewOffering({ ...newOffering, weeklyPeriods: e.target.value })}
+                      required
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                      Total periods per week (must be divisible by session duration)
+                    </small>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Consecutive Periods Per Session *</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="1"
+                      max="7"
+                      value={newOffering.durationPeriods}
+                      onChange={(e) => setNewOffering({ ...newOffering, durationPeriods: e.target.value })}
+                      required
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                      Session duration (e.g. 1 for theory, 2 or 3 for lab)
+                    </small>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Assigned Faculty (optional)</label>
+                    <select
+                      className="form-control"
+                      value={newOffering.assignedFacultyId}
+                      onChange={(e) => setNewOffering({ ...newOffering, assignedFacultyId: e.target.value })}
+                    >
+                      <option value="">-- Unassigned / None --</option>
+                      {faculty.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} ({f.designation || 'Faculty'}) — Max: {f.maxWeeklyHours || 18}h
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Preferred Room (optional)</label>
+                    <select
+                      className="form-control"
+                      value={newOffering.preferredRoomId}
+                      onChange={(e) => setNewOffering({ ...newOffering, preferredRoomId: e.target.value })}
+                    >
+                      <option value="">-- None (Auto-assign / Section Default) --</option>
+                      {rooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.roomNumber} ({r.type}, Cap: {r.capacity})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '0.75rem', marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={newOffering.active}
+                      onChange={(e) => setNewOffering({ ...newOffering, active: e.target.checked })}
+                    />
+                    <span>Active in timetable generator scheduling</span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Saving…' : editingOfferingId ? '✓ Save Changes' : '+ Add Course Offering'}
+                  </button>
+                  {editingOfferingId && (
+                    <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => resetOfferingForm()}>
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+
+          {/* Existing Offerings Table Card */}
+          <div className="card">
+            <div
+              className="card-header"
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  Course Offerings for Section ({offerings.length})
+                </h3>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  Total scheduled periods: <strong>{offerings.reduce((sum, o) => sum + (o.weeklyPeriods || 0), 0)}</strong>
+                  {offerings.reduce((sum, o) => sum + (o.weeklyPeriods || 0), 0) === 30 ? (
+                    <span style={{ color: 'var(--color-success, #22c55e)', marginLeft: '0.5rem', fontWeight: 600 }}>✓ (30 periods reached)</span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem' }}>/ 30 periods target</span>
+                  )}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ fontWeight: 600, fontSize: '0.9rem', margin: 0 }}>Section:</label>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', minWidth: '220px' }}
+                  value={selectedOfferingSectionId}
+                  onChange={(e) => handleOfferingSectionChange(e.target.value)}
+                >
+                  {sections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.code} — {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th>Type</th>
+                    <th>Weekly Periods</th>
+                    <th>Session Duration</th>
+                    <th>Assigned Faculty</th>
+                    <th>Preferred Room</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingOfferings ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+                        Loading course offerings…
+                      </td>
+                    </tr>
+                  ) : offerings.length > 0 ? (
+                    offerings.map((o) => (
+                      <tr key={o.id}>
+                        <td>
+                          <strong>{o.subjectName}</strong>
+                          {o.subjectCode && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              Code: {o.subjectCode} {o.subjectShortName ? `(${o.subjectShortName})` : ''}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge badge-${
+                            o.subjectType === 'THEORY' ? 'theory' : o.subjectType === 'LAB' ? 'lab'
+                              : o.subjectType === 'ELECTIVE' ? 'elective' : o.subjectType === 'TRAINING' ? 'training' : 'activity'
+                          }`}>
+                            {o.subjectType}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{o.weeklyPeriods}</strong> periods/wk
+                        </td>
+                        <td>
+                          {o.durationPeriods === 1 ? '1 period / session' : `${o.durationPeriods} consecutive periods`}
+                        </td>
+                        <td>{o.assignedFacultyName || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td>{o.preferredRoomNumber || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td>
+                          <span style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '4px',
+                            background: o.active ? 'rgba(34, 197, 94, 0.15)' : 'rgba(156, 163, 175, 0.2)',
+                            color: o.active ? '#15803d' : '#6b7280',
+                          }}>
+                            {o.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button
+                            className="btn btn-outline-primary btn-sm"
+                            style={{ marginRight: '0.4rem' }}
+                            disabled={saving}
+                            onClick={() => startEditOffering(o)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-outline-danger btn-sm"
+                            disabled={saving}
+                            onClick={() => handleDeleteOffering(o.id)}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>
+                        No course offerings configured for this section yet.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { WORKING_DAYS, PERIOD_DEFINITIONS, LUNCH_BREAK } from '../../data/defaultState';
-import { fetchTimetableGrid, assignSlot, deleteSlot, clearSectionTimetable } from '../../api/api';
+import { fetchTimetableGrid, assignSlot, deleteSlot, clearSectionTimetable, fillInstitutionalActivities } from '../../api/api';
 import SlotEditModal from './SlotEditModal';
 
 export default function TimetableGrid({
@@ -10,7 +10,9 @@ export default function TimetableGrid({
   semesters = [],
   faculty = [],
   subjects = [],
-  rooms = []
+  rooms = [],
+  departments = [],
+  academicYears = []
 }) {
   const [gridData, setGridData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,20 @@ export default function TimetableGrid({
   const currentSemester = semesters.find(
     (sem) => String(sem.id) === String(currentSection?.semesterId)
   );
+
+  const currentDept = departments.find(
+    (d) => String(d.id) === String(currentSection?.departmentId) || (currentSection?.departmentCode && d.code === currentSection.departmentCode)
+  );
+
+  const departmentHeading = currentDept?.name
+    ? `Department of ${currentDept.name}`
+    : currentSection?.departmentName
+      ? `Department of ${currentSection.departmentName}`
+      : currentSection?.departmentCode
+        ? `Department of ${currentSection.departmentCode}`
+        : 'Department Timetable';
+
+  const academicYearHeading = currentSection?.academicYearName || 'Current Academic Year';
 
   const sectionSlots = gridData?.slots || [];
 
@@ -115,6 +131,27 @@ export default function TimetableGrid({
     }
   };
 
+  const handleFillActivities = async () => {
+    if (!selectedSectionId) return;
+    const ok = window.confirm(
+      `Fill institutional activities (Library, NPTEL, Sports, Counselling, NSS/NCC) for section ${currentSection?.code}?\n\nExisting academic timetable slots will NOT be modified.`
+    );
+    if (!ok) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setActionSuccess(null);
+      await fillInstitutionalActivities(selectedSectionId);
+      setActionSuccess(`12 institutional activities allocated successfully for ${currentSection?.code}.`);
+      await loadGrid(selectedSectionId);
+    } catch (err) {
+      setError(err.message || 'Failed to fill institutional activities.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -151,6 +188,17 @@ export default function TimetableGrid({
         </div>
 
         <div className="controls-right" style={{ display: 'flex', gap: '0.5rem' }}>
+          {sectionSlots.length > 0 && sectionSlots.length < 42 && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleFillActivities}
+              title="Fill institutional free-hour activities in empty periods"
+              disabled={loading}
+              style={{ fontWeight: '600' }}
+            >
+              ⚡ Fill Institutional Activities
+            </button>
+          )}
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => loadGrid(selectedSectionId)}
@@ -180,15 +228,13 @@ export default function TimetableGrid({
       <div className="timetable-wrapper">
         {/* Institutional College Timetable Header */}
         <div className="timetable-institution-header">
-          <h2>
-            Department of {currentSection?.departmentCode ? `${currentSection.departmentCode} Engineering` : 'Electronics & Communication Engineering'}
-          </h2>
+          <h2>{departmentHeading}</h2>
           <p>WEEKLY CLASS & LABORATORY TIMETABLE</p>
         </div>
 
         <div className="timetable-meta-bar">
           <div>
-            <strong>Academic Year:</strong> {currentSection?.academicYearName || '2025-2026'}
+            <strong>Academic Year:</strong> {academicYearHeading}
           </div>
           <div>
             <strong>Year & Semester:</strong>{' '}
@@ -283,7 +329,9 @@ export default function TimetableGrid({
                           onClick={() => handleCellClick(day, period)}
                           title={
                             slot
-                              ? `${slot.subjectName || slot.subjectShortName} (${slot.periodIndex}) · ${slot.facultyName || 'No Faculty'} · Room ${slot.roomNumber || '—'}`
+                              ? slot.subjectType === 'ACTIVITY'
+                                ? `${slot.subjectName || slot.subjectShortName} (${slot.periodIndex}) · Institutional Activity`
+                                : `${slot.subjectName || slot.subjectShortName} (${slot.periodIndex}) · ${slot.facultyName || 'No Faculty'} · Room ${slot.roomNumber || '—'}`
                               : 'Click to assign or edit this period'
                           }
                         >
@@ -303,12 +351,20 @@ export default function TimetableGrid({
                                 </div>
                               </div>
                               <div className="slot-details">
-                                <span className="slot-faculty" title={slot.facultyName}>
-                                  {slot.facultyName
-                                    ? slot.facultyName.split(' ').slice(0, 2).join(' ')
-                                    : '—'}
-                                </span>
-                                <span className="slot-room">{slot.roomNumber || '—'}</span>
+                                {slot.subjectType === 'ACTIVITY' ? (
+                                  <span className="slot-faculty" style={{ fontStyle: 'italic', color: '#64748b' }}>
+                                    Activity
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="slot-faculty" title={slot.facultyName}>
+                                      {slot.facultyName
+                                        ? slot.facultyName.split(' ').slice(0, 2).join(' ')
+                                        : '—'}
+                                    </span>
+                                    <span className="slot-room">{slot.roomNumber || '—'}</span>
+                                  </>
+                                )}
                               </div>
                             </div>
                           ) : (
@@ -347,7 +403,9 @@ export default function TimetableGrid({
                           onClick={() => handleCellClick(day, period)}
                           title={
                             slot
-                              ? `${slot.subjectName || slot.subjectShortName} (${slot.periodIndex}) · ${slot.facultyName || 'No Faculty'} · Room ${slot.roomNumber || '—'}`
+                              ? slot.subjectType === 'ACTIVITY'
+                                ? `${slot.subjectName || slot.subjectShortName} (${slot.periodIndex}) · Institutional Activity`
+                                : `${slot.subjectName || slot.subjectShortName} (${slot.periodIndex}) · ${slot.facultyName || 'No Faculty'} · Room ${slot.roomNumber || '—'}`
                               : 'Click to assign or edit this period'
                           }
                         >
@@ -367,12 +425,20 @@ export default function TimetableGrid({
                                 </div>
                               </div>
                               <div className="slot-details">
-                                <span className="slot-faculty" title={slot.facultyName}>
-                                  {slot.facultyName
-                                    ? slot.facultyName.split(' ').slice(0, 2).join(' ')
-                                    : '—'}
-                                </span>
-                                <span className="slot-room">{slot.roomNumber || '—'}</span>
+                                {slot.subjectType === 'ACTIVITY' ? (
+                                  <span className="slot-faculty" style={{ fontStyle: 'italic', color: '#64748b' }}>
+                                    Activity
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="slot-faculty" title={slot.facultyName}>
+                                      {slot.facultyName
+                                        ? slot.facultyName.split(' ').slice(0, 2).join(' ')
+                                        : '—'}
+                                    </span>
+                                    <span className="slot-room">{slot.roomNumber || '—'}</span>
+                                  </>
+                                )}
                               </div>
                             </div>
                           ) : (

@@ -27,10 +27,19 @@ async function apiFetch(path, options = {}) {
   }
 
   if (!res.ok) {
-    // Spring Boot validation errors: { message, errors: [...] }
-    const detail =
-      (body && (body.message || body.error || JSON.stringify(body))) ||
-      `HTTP ${res.status}`;
+    // Spring Boot validation errors: { message, errors: { field: message } }
+    let detail;
+    if (body) {
+      if (body.errors && typeof body.errors === 'object') {
+        detail = Object.entries(body.errors)
+          .map(([f, m]) => `${f}: ${m}`)
+          .join('; ');
+      } else {
+        detail = body.message || body.error || JSON.stringify(body);
+      }
+    } else {
+      detail = `HTTP ${res.status}`;
+    }
     throw new Error(detail);
   }
 
@@ -40,7 +49,21 @@ async function apiFetch(path, options = {}) {
 // ─── Reference data ──────────────────────────────────────────────────────────
 
 export const fetchDepartments = () => apiFetch('/api/departments');
+export const createDepartment = (dto) =>
+  apiFetch('/api/departments', { method: 'POST', body: JSON.stringify(dto) });
+export const updateDepartment = (id, dto) =>
+  apiFetch(`/api/departments/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+export const deleteDepartment = (id) =>
+  apiFetch(`/api/departments/${id}`, { method: 'DELETE' });
+
 export const fetchAcademicYears = () => apiFetch('/api/academic-years');
+export const createAcademicYear = (dto) =>
+  apiFetch('/api/academic-years', { method: 'POST', body: JSON.stringify(dto) });
+export const updateAcademicYear = (id, dto) =>
+  apiFetch(`/api/academic-years/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+export const deleteAcademicYear = (id) =>
+  apiFetch(`/api/academic-years/${id}`, { method: 'DELETE' });
+
 export const fetchSemesters = () => apiFetch('/api/semesters');
 
 // ─── Sections ─────────────────────────────────────────────────────────────────
@@ -147,6 +170,12 @@ export const deleteSlot = (slotId) =>
 export const clearSectionTimetable = (sectionId) =>
   apiFetch(`/api/timetable-slots/section/${sectionId}`, { method: 'DELETE' });
 
+/**
+ * Fills all 12 institutional free-hour activity slots for a section.
+ */
+export const fillInstitutionalActivities = (sectionId) =>
+  apiFetch(`/api/timetable-slots/section/${sectionId}/fill-activities`, { method: 'POST' });
+
 // ─── Course Offerings ────────────────────────────────────────────────────────
 
 /**
@@ -154,4 +183,16 @@ export const clearSectionTimetable = (sectionId) =>
  */
 export const fetchActiveOfferings = (sectionId) =>
   apiFetch(`/api/course-offerings/section/${sectionId}/active`);
+
+export const fetchCourseOfferings = (sectionId) =>
+  apiFetch(sectionId ? `/api/course-offerings?sectionId=${sectionId}` : '/api/course-offerings');
+
+export const createCourseOffering = (dto) =>
+  apiFetch('/api/course-offerings', { method: 'POST', body: JSON.stringify(dto) });
+
+export const updateCourseOffering = (id, dto) =>
+  apiFetch(`/api/course-offerings/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+
+export const deleteCourseOffering = (id) =>
+  apiFetch(`/api/course-offerings/${id}`, { method: 'DELETE' });
 
